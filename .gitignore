@@ -6,3 +6,8 @@ redis.conf
 Ratelimiter.md
 Key-Value-Store-CAP-Consistent-Hashing.md
 LEARN_ARCHITECTURE.md
+
+bin/
+*.exe
+
+/build/
