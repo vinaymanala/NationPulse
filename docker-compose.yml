@@ -1,0 +1,242 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: postgres-db
+    shm_size: 4g
+    cpu_count: 4
+    user: root
+    volumes:
+      - ./.pgdata/database:/var/lib/postgresql/data
+    environment:
+      - PG_DB_PASSWORD=postgres
+      - PG_DB_USER=postgres
+      - PG_DB_NAME=nationPulseDB
+      - PG_DB_ADDR=postgres-db:5432
+      - REDIS_ADDR=redis-cache:6379
+      - PGDATA=/var/lib/postgresql/data/db-files/
+    expose:
+      - 5432
+    ports:
+      - "5432:5432"
+    networks:
+      - nationPulse-network
+  redis:
+    image: redis:8-alpine
+    container_name: redis-cache
+    ports:
+      - "6379:6379"
+    # Remove this if redis.conf causes issues:
+    volumes:
+      - ./redis.conf:/usr/local/etc/redis/redis.conf
+    command: ["redis-server", "/usr/local/etc/redis/redis.conf"]
+    restart: unless-stopped
+    networks:
+      - nationPulse-network
+  bff:
+    build:
+      context: ./nationpulse-bff/
+    container_name: nationpulse-bff
+    expose:
+      - 8081
+    ports:
+      - "8081:8081"
+    environment:
+      - PORT=8081
+      - PG_DB_ADDR=postgres-db:5432
+      - PG_DB_HOST=postgres-db
+      - PG_DB_NAME=nationPulseDB
+      - PG_DB_USER=postgres
+      - PG_DB_PASSWORD=postgres
+      - KAFKA_BROKERS=kafka-1:9092,kafka-2:9094,kafka-3:9095
+      - REDIS_ADDR=redis-cache:6379
+      - ACCESS_SECRET=epAWkXwJr03d6MN9pXUAxGj+dB6U+8HcYxwTGxVU1gg=
+      - REFRESH_SECRET=YN5Vgber0y5IX5CUq\ZlIQC8avwpsX67+Q\8OcvJ23c=
+      - KAFKA_WRITER_TOPIC=message-log
+      - KAFKA_READER_TOPIC=message-send
+    depends_on:
+      - postgres
+      - redis
+      - kafka-1
+      - kafka-2
+      - kafka-3
+      - kafka-init
+    command: >
+      sh -c "
+      while ! kafka-topics --list --bootstrap-server kafka-1:9092 > /dev/null 2>&1; do
+        echo 'Waiting for Kafka...'
+        sleep 5
+      done
+      echo 'Kafka is ready, starting application...'
+      npm start
+      "
+    networks:
+      - nationPulse-network
+  reporting:
+    build:
+      context: ./nationpulse-reporting-svc/
+    container_name: nationpulse-reporting-svc
+    environment:
+      - PG_DB_ADDR=postgres-db:5432
+      - REDIS_ADDR=redis-cache:6379
+      - KAFKA_BROKERS=kafka-1:9092,kafka-2:9094,kafka-3:9095      
+    # env_file:
+    #   - .env
+    depends_on:
+      - postgres
+      - redis
+      - kafka-1
+      - kafka-2
+      - kafka-3
+      - kafka-init
+    networks:
+      - nationPulse-network
+  ingestion:
+    build:
+      context: ./nationpulse-data-ingestion-svc/
+    container_name: nationpulse-data-ingestion-svc
+    environment:
+      - KAFKA_BROKERS=kafka-1:9092,kafka-2:9094,kafka-3:9095
+      - REDIS_ADDR=redis-cache:6379
+      - PG_DB_ADDR=postgres-db:5432
+      - PG_DB_HOST=postgres-db
+      - PG_DB_NAME=nationPulseDB
+      - PG_DB_USER=postgres
+      - PG_DB_PASSWORD=postgres
+      - BASE_URL=https://sdmx.oecd.org/public/rest/data
+      - DELAY_BETWEEN_REQUESTS=1
+      - POPULATION_INDICATOR=OECD.ELS.SAE,DSD_POPULATION@DF_POP_HIST,/.POP.PS._T..
+      - ECONOMY_GDP_INDICATOR=OECD.SDD.NAD,DSD_NAMAIN1@DF_QNA_EXPENDITURE_CAPITA,/Q............
+      - ECONOMY_GOV_INDICATOR=OECD.GOV.GIP,DSD_GOV@DF_GOV_PF_YU,/A...PT_B1GQ...
+      - HEALTH_INDICATOR=OECD.ELS.HD,DSD_HEALTH_STAT@DF_HEALTH_STATUS,/.A.IRTA+CSEM+LFEXP..........
+      - GROWTH_GDP_INDICATOR=OECD.ECO.MAD,DSD_EO@DF_EO,/.MGSV_ANNPCT+XGSV_ANNPCT+TDDV_ANNPCT+PCORE_YTYPCT+GDPV_ANNPCT.A
+      - GROWTH_POPULATION_INDICATOR=OECD.ECO.MAD,DSD_EO@DF_EO,/.POP+UNR+POP1574+ERS1574+ET_ANNPCT.A
+    # env_file:
+    #   - .env
+    expose:
+      - 50051
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - nationPulse-network
+  cronjob:
+    build:
+      context: ./nationpulse-cron-data-ingestion-schedular-svc/
+    container_name: nationpulse-cron-data-ingestion-schedular-svc
+    environment:      
+      - GRPC_SERVER_ADDR=ingestion:50051
+      - CRON_SCHEDULE=@every 360h
+    # env_file:
+    #   - .env
+    expose:
+      - 50051
+    networks:
+      - nationPulse-network
+  
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    command:
+      [
+        "--config.file=/etc/prometheus/prometheus.yml",
+        "--storage.tsdb.path=/prometheus",
+      ]
+    networks:
+      - nationPulse-network
+  kafka-1:
+    image: apache/kafka:latest
+    container_name: kafka-1
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka-1:9092
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka-1:9093,2@kafka-2:9093,3@kafka-3:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 3
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 2
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+      CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
+      # KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    volumes:
+      - kafka-1-data:/var/lib/kafka/data
+    networks:
+      - nationPulse-network
+
+  kafka-2:
+    image: apache/kafka:latest
+    container_name: kafka-2
+    ports:
+      - "9094:9094"
+    environment:
+      KAFKA_NODE_ID: 2
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9094,CONTROLLER://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka-2:9094
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka-1:9093,2@kafka-2:9093,3@kafka-3:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 3
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 2
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+      CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
+      # KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    volumes:
+      - kafka-2-data:/var/lib/kafka/data
+    networks:
+      - nationPulse-network
+
+  kafka-3:
+    image: apache/kafka:latest
+    container_name: kafka-3
+    ports:
+      - "9095:9095"
+    environment:
+      KAFKA_NODE_ID: 3
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9095,CONTROLLER://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka-3:9095
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka-1:9093,2@kafka-2:9093,3@kafka-3:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 3
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 2
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+      CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk
+      # KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    volumes:
+      - kafka-3-data:/var/lib/kafka/data
+    networks:
+      - nationPulse-network
+  kafka-init:
+    image: apache/kafka:latest
+    container_name: kafka-init
+    depends_on:
+      - kafka-1
+      - kafka-2
+      - kafka-3
+    networks:
+      - nationPulse-network
+    entrypoint: ["sh", "-c", "while ! /opt/kafka/bin/kafka-topics.sh --list --bootstrap-server kafka-1:9092 > /dev/null 2>&1; do echo 'Waiting for Kafka...'; sleep 5; done; /opt/kafka/bin/kafka-topics.sh --create --if-not-exists --bootstrap-server kafka-1:9092 --replication-factor 3 --partitions 3 --topic message-log; /opt/kafka/bin/kafka-topics.sh --create --if-not-exists --bootstrap-server kafka-1:9092 --replication-factor 3 --partitions 3 --topic message-send; echo 'Created topics message-log and message-send'; sleep 1"]
+volumes:
+  prometheus_data:
+  kafka-1-data:
+  kafka-2-data:
+  kafka-3-data:
+networks:
+  nationPulse-network:
+  # monitoring:

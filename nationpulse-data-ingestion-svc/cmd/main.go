@@ -1,0 +1,74 @@
+package main
+
+import (
+	"context"
+	"fmt"
+	"log"
+	"net"
+	"os"
+	"os/signal"
+	"syscall"
+
+	_ "net/http/pprof"
+
+	"github.com/joho/godotenv"
+	"github.com/vinaymanala/nationpulse-data-ingestion-svc/internal/config"
+	"github.com/vinaymanala/nationpulse-data-ingestion-svc/internal/service"
+	"github.com/vinaymanala/nationpulse-data-ingestion-svc/internal/store"
+	. "github.com/vinaymanala/nationpulse-data-ingestion-svc/internal/types"
+	"github.com/vinaymanala/nationpulse-data-ingestion-svc/pb"
+	"google.golang.org/grpc"
+)
+
+func main() {
+	fmt.Println("Running go..")
+
+	// Load environment variables from .env for local development
+	if err := godotenv.Load(); err != nil {
+		log.Println("No .env file found or failed to load; relying on environment variables")
+	}
+
+	cfg := config.Load()
+
+	// r := gin.Default()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	pg := *store.NewPgClient(ctx, cfg)
+
+	Configs := &Configs{
+		Cfg: cfg,
+		Ctx: ctx,
+		DB:  &pg,
+	}
+
+	dataIngestionSvc := service.NewDataIngestionSvc(Configs)
+	// dataIngestionSvc.Serve()
+	// os.Exit(1)
+
+	// setup a grpc tcp listener no port 50051
+	lis, err := net.Listen("tcp", ":50051")
+	if err != nil {
+		log.Fatalf("Failed to listen: %v", err)
+	}
+	grpcServer := grpc.NewServer()
+	pb.RegisterDataIngestionServer(grpcServer, dataIngestionSvc)
+
+	// Run server in a goroutine to allow graceful shutdown
+	go func() {
+		log.Printf("Listening to %v", lis.Addr())
+		if err := grpcServer.Serve(lis); err != nil {
+			log.Fatalf("Failed to serve grpc: %v", err)
+		}
+	}()
+
+	// Wait for interrupt signal for graceful shutdown
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+	<-sigChan
+
+	log.Println("Shutting down gRPC server...")
+	grpcServer.GracefulStop()
+	lis.Close()
+	log.Println("Server stopped")
+}

@@ -1,0 +1,8 @@
+#Go build support
+bin/
+
+#Git metadata
+.git/
+
+#Sensitive configuration
+.env

@@ -1,0 +1,8 @@
+*.env
+*.pgdata
+*.vscode
+redis.conf
+*db.txt
+Ratelimiter.md
+Key-Value-Store-CAP-Consistent-Hashing.md
+LEARN_ARCHITECTURE.md
