@@ -49,6 +49,50 @@ This documentation provides you with all the details you need to know about this
 
 ## Architecture at a Glance
 
+A simple high level architecture of how the project backend flows:
+
+```mermaid
+graph TD
+    UI[Frontend UI]
+    BFF[BFF Service]
+
+    Ingest[Data Ingestion Service]
+    Scheduler[Cron Job Scheduler]
+
+    Kafka[(Kafka)]
+    Redis[(Redis Cache)]
+    Postgres[(Postgres)]
+
+    Reporting[Reporting Service]
+
+    Prometheus[Prometheus]
+
+    %% User flow
+    UI -->|HTTP| BFF
+
+    %% BFF dependencies
+    BFF -->|Query| Reporting
+    BFF -->|Read/Write| Redis
+    BFF -->|Read| Postgres
+
+    %% Ingestion flow
+    Scheduler -->|Trigger Jobs| Ingest
+    Ingest -->|Write Raw Data| Postgres
+
+    %% Reporting flow
+    Kafka <-->|Consume Events| Reporting
+    Kafka <-->|Publish Events| BFF
+    Reporting -->|Write Aggregates| Postgres
+    Reporting -->|Cache Hot Data| Redis
+
+    %% Observability
+    BFF -->|Metrics| Prometheus
+    Ingest -->|Metrics| Prometheus
+    Reporting -->|Metrics| Prometheus
+```
+
+Note: Some components are still in development or I have not started.
+
 ## High-Level Data Flow
 
 ### BFF
@@ -109,6 +153,8 @@ sequenceDiagram
 
 ### Reporting (Using kafka)
 
+A simple flow where BFF and Reporting Service handling the report generation using kafka
+
 ```mermaid
 sequenceDiagram
     participant UI
@@ -119,6 +165,18 @@ sequenceDiagram
     BFF->>Reporting: Fetch aggregated data
     Reporting-->>BFF: Report data
     BFF-->>UI: Optimized response
+```
+
+```mermaid
+graph TD
+    BFF <-->|Serve API| UI[Frontend]
+    BFF[BFF] -->|Publish Events| Kafka1[(Kafka)]
+    Kafka1 -->|Consume Events| Reporting[Reporting Service]
+    Kafka2 -->|Consume Events| BFF[BFF]
+    Reporting <-->|Convert to CSV| Reporting[Reporting Service]
+    Reporting -->|adds file to Cache| DB[(Redis Cache)]
+    Reporting <-->|Fetch Data| DB[(Postgres DB)]
+    Reporting -->|Publish Events| Kafka2[(Kafka)]
 ```
 
 - Why a seperate reporting service?
@@ -164,6 +222,7 @@ sequenceDiagram
     participant Database@{ "type" : "database" }
 
     Cron job scheduler ->> Data Ingestion Service: rpc GetNotify
+    Cron job scheduler -->> Cron job scheduler: Trigger periodically
     Data Ingestion Service <<->> FeedCSV: fetch Latest Feed
     Data Ingestion Service -->> Data Ingestion Service: Parse data
     Data Ingestion Service ->> Database: Perform ETL
