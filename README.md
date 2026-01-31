@@ -7,6 +7,24 @@ This documentation provides you with all the details you need to know about this
 
 ## Index:
 
+- [Overview](#overview)
+  - [Features](#features)
+  - [Components](#components)
+  - [Architecture at a Glance]()
+  - [High level Data flow]()
+    - [BFF](#bff)
+    - [Reporting service](#reporting-using-kafka)
+    - [Data ingestion service](#data-ingestion-using-grpc)
+    - [Cron job scheduler service](#cron-job-scheduler)
+  - [Service to Service Communication](#service-to-service-communication)
+  - [API Design](#api-design)
+  - [Concurrency & Performance Considerations](#concurrency--performance-considerations)
+  - [Reliability & Observability](#reliability--observability)
+  - [Failure Scenarios & Handling](#failure-scenarios--handling)
+  - [Local Development](#local-development)
+  - [Project Structure](#project-structure)
+  - [Roadmap / Future Improvements](#roadmap--future-improvements)
+
 ## Overview
 
 ### Features:
@@ -16,6 +34,7 @@ This documentation provides you with all the details you need to know about this
 - Health (Show various health cases and mortality rates of a ountry)
 - Economy (Shows GDP, government revenues and import/export metrics)
 - Reporting (Generates reports of country's population, health, economy, etc.)
+- Permissions (Modify permissions of the user - admin only)
 
 #### As the project is still in development state, new features and components will be added in the future. You can find the roadmap [here](#roadmap--future-improvements)
 
@@ -33,6 +52,25 @@ This documentation provides you with all the details you need to know about this
 ## High-Level Data Flow
 
 ### BFF
+
+A simple Frontend-BFF/Monolith request/response flow
+
+```mermaid
+sequenceDiagram
+    participant UI
+    participant Middleware
+    participant BFF
+
+    UI->>Middleware: POST|GET /{"protected route"}
+    Middleware<<-->>+BFF: (panic recovery)? Safe
+    Middleware<<-->>+BFF: logging (logs status)
+    Middleware<<-->>+BFF: metrics (update metrics)
+    Middleware<<-->>+BFF: allowCors (check cors)
+    Middleware<<-->>+BFF: auth (check Auth)
+    BFF-->>UI: Returns error if error detect
+    UI-->>BFF: Reads the request
+    BFF->>UI: Sends Optimized response
+```
 
 - What the BFF talks to and what does it **not** do?
 
@@ -53,18 +91,6 @@ This documentation provides you with all the details you need to know about this
   - Response caching
   - Database handling
 
-```mermaid
-sequenceDiagram
-    participant UI
-    participant BFF
-    participant Reporting
-
-    UI->>BFF: GET /reports
-    BFF->>Reporting: Fetch aggregated data
-    Reporting-->>BFF: Report data
-    BFF-->>UI: Optimized response
-```
-
 - Where latency can occur ?
 
   Since bff talks to other downstream services doing network hops (reporting, services, cache, DB) which adds network overhead, so we can expect latency.
@@ -83,12 +109,40 @@ sequenceDiagram
 
 ### Reporting (Using kafka)
 
+```mermaid
+sequenceDiagram
+    participant UI
+    participant BFF
+    participant Reporting
+
+    UI->>BFF: GET /reports
+    BFF->>Reporting: Fetch aggregated data
+    Reporting-->>BFF: Report data
+    BFF-->>UI: Optimized response
+```
+
 - Why a seperate reporting service?
 
   A service is a small unit of work which is isolated and works as per the business requirement. A reporting service would handle the report generation, data aggregation and may do CPU heavy intensive work. This would have involved handling large historical datasets, making this a read-heavy achitecture. This is more than just a traditional request-response service. A seperate reporting service can perform this work in isolation and scale independently.
 
 - Why use kafka?
-- Kafka vs RabbitMQ?
+
+  Kafka is used for event streaming, used for producing and consuming messages with high throughput. kafka follows pull based mechanism by consumers, and uses a cluster to orchestrate and distribute the messages to read my their consumer group and partitioned based on the message topic given. It is also widely used in many companies. Handling report generation requests though required such system which can process even delayed messages and notifies the system.
+
+- Kafka vs RabbitMQ
+
+  Kafka
+  - Built in high throughput event streaming
+  - The messages are stored on disk, data retention
+  - Mainly used for event driven architecture, data pipelines.
+  - Distributed system scales horizontally
+  - Guranteed ordering per partition
+
+  RabbitMQ
+  - is a traditional mesage broker
+  - Uses ordering inside a queue
+  - Pull based mechanism
+  - Used for request/response, task queues, background jobs.
 
   #### Core responsibilities
   - Report generation
@@ -100,10 +154,28 @@ sequenceDiagram
 
 ### Data Ingestion (Using gRPC)
 
+A simple flow how cron job scheduling and data ingestion service works togethter
+
+```mermaid
+sequenceDiagram
+    participant Cron job scheduler
+    participant Data Ingestion Service
+    participant FeedCSV@{ "type" : "database" }
+    participant Database@{ "type" : "database" }
+
+    Cron job scheduler ->> Data Ingestion Service: rpc GetNotify
+    Data Ingestion Service <<->> FeedCSV: fetch Latest Feed
+    Data Ingestion Service -->> Data Ingestion Service: Parse data
+    Data Ingestion Service ->> Database: Perform ETL
+    Data Ingestion Service ->> Cron job scheduler: rpc GetNotify
+```
+
 - Why data ingestion ?
+
   To show latest and updated data was a core idea and requirement for the project. To view a country's demographics and economy, the data should be accurate and should be not stale. This service ingest the new feeds periodically from the source to the postgres database. This is a important step in every business applications to ensure client gets the most latest and accurate data.
 
 - Why gRPC?
+
   gRPC is a standard and most efficient way for communicating between services. It uses protocol buffers as data serialization and uses the contract definitions to maintain a strictly-typed schema. Its fast because it works over HTTP/2 protocol and transmitted in binary.
   Making an ideal choice for inter-services communication and for my learning purposes.
 
@@ -137,29 +209,117 @@ sequenceDiagram
 
 ## Service-to-Service Communication
 
-- REST vs GRPC
+- REST vs gRPC
+
+  REST
+  - Uses HTTP/1.1
+  - Easy integration
+  - Data serialization - JSON
+  - Uses client-server request/response architecture
+  - Easy to debug
+  - External facing APIs
+  - Widely used as a API protocol between the client and backend
+
+  gRPC
+  - Uses HTTP/2
+  - Difficult to implement
+  - Data serialization - protocol buffers (binary)
+  - Strongly typed, contract first
+  - Supports bi-directional streaming
+  - Uses mainly for backend service to service communication
+
 - Timeouts
+
+  If you want your backend services to recover//backoff on their own when the process its running is either taking too long or the target resource is down. You need a simple mechanism to handle such common issues. Using timeouts is as basic and necessary as adding a HTTP method to your endpoint. You should assign timeouts for every network calls, such as database calls, inter service communicatio, external API calls, etc. In go you can assign timeout with the help of context. The combination of context with timeout can save you from unknown issues which can eventually can brings down you system.
+
 - Circuit-breaking (planned)
+
+  Circuit breakers prevent cascading failures by failing fast when your downstram system are down. It usually combined with timeouts and retries.
+  You can uses circuit breakers as a middleware or after the timeout with retries. It has three states, open, close and half open.
+  - Open: circuit is open, fail fast
+  - Close: circuit is closed, pass the requests.
+  - Half open: circuit is half opn, lets send some requests and check
 
 ## API Design
 
+The API structure is read heavy and all the REST APIs resides in the BFF layer making it a BFF/Monolith. Though its easy to make the monolith a modular monolith with some configurations. The end goal is to build a complete microservice architecture with BFF decoupled from these services. Since this project is under development, I have not added the api versioning, and its planned.
+
+```
+REST APIs
+
+[User service]
+POST /api/u/signin - Signing the user
+POST /api/u/signout - Signout the user
+POST /api/u/token/refresh - createing refresh token
+
+[Utils service]
+POST /api/uu/permissions - gets the user permissions
+POST /api/uu/reports/publish - report generation
+GET /api/uu/reports/subscribe/event - SSE client call
+
+[Dashboard service]
+GET /api/dashboard/population - gets the top population data
+GET /api/dashboard/health - gets the top health related cases data
+GET /api/dashboard/gdp - gets the top gdp data
+
+[Population service]
+GET /api/population/country - gets the country's population data
+
+[Health service]
+GET /api/health/country - gets the country's health cases data
+
+[Economy service]
+GET /api/economy/governmentdata/country - gets the country's government data
+GET /api/economy/gdp/country - gets the country's gdp data
+
+[Growth service]
+GET /api/growth/gdp/country - gets the country's gdp data
+GET /api/growth/population/country - gets the country's population data
+
+gRPC
+
+[Data ingestion service]
+// Unary RPC - notifies the BFF layer upon process completes
+rpc NotifyBFF(NotifyBFFRequest) returns ( stream NotifyBFFResponse);
+
+```
+
 ## Concurrency & Performance Considerations
 
+As Rob Pike said -
+
+> "Concurrency is the composition of independently executing computations.
+> Its not parallelism. A concurrent program can run in parallel using multi-processor if well written"
+
 - Goroutines for parallel service calls
-- Context propagation
-- Timeouts
+
+  A goroutine is a light weight user level thread which is fast and efficient can orchestrated by Go runtime and scheduled on top of OS threads. They can start as small as 2KB. You can have millions of goroutines runnign at an instance.
+
+  I have used goroutines in reporting service for running kakka producer and consumer as both are blocking calls. Used goroutines and error channels in data ingestion to run my ETL function concurrently and using error channels at each stage.
+
+- Context propagation and Timeouts
+
+  The context is been used at every calls made from bff and other backend services.ontext propagation and timeouts ensure that long-running or stuck goroutines are cancelled early, preventing resource leaks and improving system stability.
 
 ## Reliability & Observability
 
-- Logging strategy
+- Logging
+  Used zap logger, fast logging setup as a middleware. Requests, boundaries, failures, and slow paths. The log consists of http path, query, statusCode, latency occured, http method and userAgent headers. Logging is very necessary to debug any unknown issues, logging any network failures, and latency issues.
+
 - Metrics (Prometheus planned/added)
+
+  Integrated prometheus to detect and record simple http response and count metrics. As this is new to me, I will add more metrics and learn more about metrics handling and health checks.
+
 - Tracing (future)
+
+  Tracing provides end-to-end visibility of a request as it flows across services, helping identify latency bottlenecks and failure points. I have yet to add this and learn about this tool.
 
 ## Failure Scenarios & Handling
 
-- Reporting service timeout → partial response with degraded data
-- Cache miss → fallback to database
-- Downstream failure → fast failure with meaningful error
+- Reporting service timeout - partial response with degraded data
+- Cache miss - fallback to database
+- Downstream failure - fast failure with meaningful error
+- kafka - log from writer and reader
 
 ## Local Development
 
@@ -182,6 +342,8 @@ if you want to stop all the instances running, run this command in your terminal
 ```
 make stop
 ```
+
+##### To run the project frontend , you can follow the instructions from [here](https://github.com/vinaymanala/NationPulse-Frontend)
 
 ## Project Structure
 
@@ -340,11 +502,8 @@ You can generate your own tree like structure [here](https://githubtree.mgks.dev
 - Add circuit breakers and retries
 - Kubernetes CronJobs for ingestion triggers
 - Distributed tracing with OpenTelemetry
+- End to end microservice architecture
+- Health checks and metrics aggregator with Prometheus and Grafana
+- More OECD and other data sources insights
 
-The project contains two sub folders:
-
-- [Frontend](https://github.com/vinaymanala/NationPulse-Frontend)
-- [Backend](https://github.com/vinaymanala/NationPulse-Backend)
-- [README](.)
-
-Please await for further project description and features..
+####
