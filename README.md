@@ -170,13 +170,11 @@ sequenceDiagram
 ```mermaid
 graph TD
     BFF <-->|Serve API| UI[Frontend]
-    BFF[BFF] -->|Publish Events| Kafka1[(Kafka)]
-    Kafka1 -->|Consume Events| Reporting[Reporting Service]
-    Kafka2 -->|Consume Events| BFF[BFF]
+    BFF[BFF]<-->|Publish Events| Kafka[(Kafka)]
+    Kafka <-->|Consume Events| Reporting[Reporting Service]
     Reporting <-->|Convert to CSV| Reporting[Reporting Service]
     Reporting -->|adds file to Cache| DB[(Redis Cache)]
     Reporting <-->|Fetch Data| DB[(Postgres DB)]
-    Reporting -->|Publish Events| Kafka2[(Kafka)]
 ```
 
 - Why a seperate reporting service?
