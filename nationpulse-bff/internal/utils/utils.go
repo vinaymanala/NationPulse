@@ -24,7 +24,6 @@ func WriteJSON(w http.ResponseWriter, status int, data any, success bool, err an
 		IsSuccess: success,
 		Error:     err,
 	}
-	// log.Printf("Message: %s: %s, isSuccess: %t, Error:%v \n", success, err)
 	return json.NewEncoder(w).Encode(response)
 }
 

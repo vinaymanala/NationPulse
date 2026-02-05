@@ -2,8 +2,6 @@ package services
 
 import (
 	"log"
-	"net/http"
-	"time"
 
 	"github.com/nationpulse-bff/internal/repos"
 	. "github.com/nationpulse-bff/internal/utils"
@@ -22,38 +20,18 @@ func NewDashboardService(configs *Configs, repo *repos.DashboardRepo) *Dashboard
 	}
 }
 
-func (ds *DashboardService) GetTopCountriesByPopulation(w http.ResponseWriter, r *http.Request) {
+func (ds *DashboardService) GetTopCountriesByPopulation(year, topNCountries int) (interface{}, error) {
 	log.Println("fetch top 5 populated countries")
-	year := time.Now().Year()
-	data, err := ds.repo.GetTopCountriesByPopulationData(year, 10)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		WriteJSON(w, http.StatusInternalServerError, nil, false, err.Error())
-		return
-	}
-	WriteJSON(w, http.StatusOK, data, true, nil)
+	return ds.repo.GetTopCountriesByPopulationData(year, topNCountries)
 }
 
-func (ds *DashboardService) GetTopCountriesByHealth(w http.ResponseWriter, r *http.Request) {
+func (ds *DashboardService) GetTopCountriesByHealth() (interface{}, error) {
 	log.Println("fetch top 5 health related cases in countries")
-	data, err := ds.repo.GetTopCountriesByHealthData()
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		WriteJSON(w, http.StatusInternalServerError, nil, false, err.Error())
-		return
-	}
-	WriteJSON(w, http.StatusOK, data, true, nil)
+	return ds.repo.GetTopCountriesByHealthData()
+
 }
 
-func (ds *DashboardService) GetTopCountriesByGDP(w http.ResponseWriter, r *http.Request) {
+func (ds *DashboardService) GetTopCountriesByGDP(year, topNCountries int) (interface{}, error) {
 	log.Println("fetch top 5 gdp countries")
-	year := time.Now().Year() - 1
-	data, err := ds.repo.GetTopCountriesByGDPData(year, 10)
-	if err != nil {
-		log.Println("Error occured: ", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		WriteJSON(w, http.StatusInternalServerError, nil, false, err.Error())
-		return
-	}
-	WriteJSON(w, http.StatusOK, data, true, nil)
+	return ds.repo.GetTopCountriesByGDPData(year, topNCountries)
 }

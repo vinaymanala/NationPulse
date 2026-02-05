@@ -19,7 +19,7 @@ func NewAdminRepo(configs *Configs) *AdminRepo {
 	}
 }
 
-func (ar *AdminRepo) GetUserPermissions(userID string) (any, error) {
+func (ar *AdminRepo) GetUserPermissions(userID string) (interface{}, error) {
 	var userPermissions []UserPermissions
 	var permissions []int
 
@@ -27,13 +27,13 @@ func (ar *AdminRepo) GetUserPermissions(userID string) (any, error) {
 	if err != nil {
 		log.Println("Cache Get Failed. Trying DB.")
 	} else {
-		return *data, nil
+		return data, nil
 	}
 
 	sqlStatement := `SELECT * FROM get_user_permissions($1);`
 	id, err := strconv.Atoi(userID)
 	if err != nil {
-		log.Fatal("Error converting userId to int")
+		log.Println("Error converting userId to int")
 		return nil, err
 	}
 
@@ -91,7 +91,7 @@ func (ar *AdminRepo) SetUserPermissions(updatePermissions UpdatePermissions) err
 	return nil
 }
 
-func (ar *AdminRepo) GetUsers() (any, error) {
+func (ar *AdminRepo) GetUsers() (interface{}, error) {
 	var users []Users
 	sqlStatement := `SELECT * from users`
 	rows, err := ar.Configs.Db.Client.Query(ar.Configs.Context, sqlStatement)

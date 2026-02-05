@@ -1,8 +1,6 @@
 package services
 
 import (
-	"net/http"
-
 	"github.com/nationpulse-bff/internal/repos"
 	. "github.com/nationpulse-bff/internal/utils"
 )
@@ -20,26 +18,13 @@ func NewEconomyService(configs *Configs, repo *repos.EconomyRepo) *EconomyServic
 	}
 }
 
-func (es *EconomyService) GetEconomyGovernmentDataByCountryCode(w http.ResponseWriter, r *http.Request) {
-	countryCode := r.URL.Query().Get("countryCode")
+func (es *EconomyService) GetEconomyGovernmentDataByCountryCode(countryCode string) (interface{}, error) {
 	// log.Printf("Economy GovermentData of %s\n", countryCode)
-	data, err := es.repo.GetGovernmentData(countryCode)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		WriteJSON(w, http.StatusInternalServerError, nil, false, err.Error())
-		return
-	}
-	WriteJSON(w, http.StatusOK, data, true, nil)
+	return es.repo.GetGovernmentData(countryCode)
+
 }
 
-func (es *EconomyService) GetEconomyGDPByCountryCode(w http.ResponseWriter, r *http.Request) {
-	countryCode := r.URL.Query().Get("countryCode")
+func (es *EconomyService) GetEconomyGDPByCountryCode(countryCode string) (interface{}, error) {
 	// log.Printf("Economy GDP of %s\n", countryCode)
-	data, err := es.repo.GetGDPData(countryCode)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		WriteJSON(w, http.StatusInternalServerError, nil, false, err.Error())
-		return
-	}
-	WriteJSON(w, http.StatusOK, data, true, nil)
+	return es.repo.GetGDPData(countryCode)
 }

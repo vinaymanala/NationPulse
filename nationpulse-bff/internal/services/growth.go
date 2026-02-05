@@ -2,7 +2,6 @@ package services
 
 import (
 	"log"
-	"net/http"
 
 	"github.com/nationpulse-bff/internal/repos"
 	. "github.com/nationpulse-bff/internal/utils"
@@ -21,26 +20,12 @@ func NewGrowthService(configs *Configs, repo *repos.GrowthRepo) *GrowthService {
 	}
 }
 
-func (gs *GrowthService) GetGDPGrowthByCountryCode(w http.ResponseWriter, r *http.Request) {
-	countryCode := r.URL.Query().Get("countryCode")
-	log.Printf("fetch Gdp growth of %s\n", countryCode)
-	data, err := gs.repo.GetGDPGrowthData(countryCode)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		WriteJSON(w, http.StatusInternalServerError, nil, false, err.Error())
-		return
-	}
+func (gs *GrowthService) GetGDPGrowthByCountryCode(countryCode string) (interface{}, error) {
 
-	WriteJSON(w, http.StatusOK, data, true, nil)
+	log.Printf("fetch Gdp growth of %s\n", countryCode)
+	return gs.repo.GetGDPGrowthData(countryCode)
 }
 
-func (gs *GrowthService) GetPopulationGrowthByCountryCode(w http.ResponseWriter, r *http.Request) {
-	countryCode := r.URL.Query().Get("countryCode")
-	data, err := gs.repo.GetPopulationGrowth(countryCode)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		WriteJSON(w, http.StatusInternalServerError, nil, false, err.Error())
-		return
-	}
-	WriteJSON(w, http.StatusOK, data, true, nil)
+func (gs *GrowthService) GetPopulationGrowthByCountryCode(countryCode string) (interface{}, error) {
+	return gs.repo.GetPopulationGrowth(countryCode)
 }

@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/joho/godotenv"
 	"github.com/nationpulse-bff/internal/config"
@@ -34,7 +35,7 @@ func main() {
 	cfg := config.Load()
 
 	// Initialize redis store
-	rds := store.NewRedis(cfg)
+	rds := store.NewRedis(cfg, 15*time.Minute)
 	// Initialize postgres client
 	db := store.NewPgClient(ctx, cfg)
 	// Initialize kafka svc

@@ -11,6 +11,12 @@ import (
 	"go.uber.org/zap"
 )
 
+type ServiceError struct {
+	Code    string
+	Message string
+	Status  int
+}
+
 type Configs struct {
 	Db                  *store.PgClient
 	Cache               *store.Redis

@@ -11,9 +11,25 @@ import (
 	"github.com/redis/go-redis/v9/maintnotifications"
 )
 
-type Redis struct{ Client *redis.Client }
+type TokenStore interface {
+	SetJTI(ctx context.Context, key, userID string, exp time.Time) error
+	DelJTI(ctx context.Context, key string) error
+	GetUserByJTI(ctx context.Context, key string) (string, error)
+}
 
-func NewRedis(cfg config.Config) *Redis {
+type CacheStore interface {
+	SetData(ctx context.Context, key string, value interface{}) error
+	GetData(ctx context.Context, key string) (string, error)
+	DelData(ctx context.Context, key string) error
+	Exists(ctx context.Context, key string) (bool, error)
+}
+
+type Redis struct {
+	Client *redis.Client
+	ttl    time.Duration
+}
+
+func NewRedis(cfg config.Config, ttl time.Duration) *Redis {
 	addr := cfg.RedisAddr
 	// if addr == "" {
 	// 	addr = "localhost:6379"
@@ -25,7 +41,7 @@ func NewRedis(cfg config.Config) *Redis {
 		},
 	})
 	fmt.Println("Connected to Redis successfully")
-	return &Redis{Client: rdb}
+	return &Redis{Client: rdb, ttl: ttl}
 }
 
 var ttl time.Duration = time.Duration(15) * time.Minute

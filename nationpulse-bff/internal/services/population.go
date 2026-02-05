@@ -1,9 +1,6 @@
 package services
 
 import (
-	"log"
-	"net/http"
-
 	"github.com/nationpulse-bff/internal/repos"
 	. "github.com/nationpulse-bff/internal/utils"
 )
@@ -21,14 +18,6 @@ func NewPopulationService(configs *Configs, repo *repos.PopulationRepo) *Populat
 	}
 }
 
-func (ps *PopulationService) GetPopulationByCountryCode(w http.ResponseWriter, r *http.Request) {
-	countryCode := r.URL.Query().Get("countryCode")
-	log.Printf("fetch population of %s\n", countryCode)
-	data, err := ps.repo.GetPopulationByCountryData(countryCode)
-	if err != nil {
-		http.Error(w, "failed", http.StatusInternalServerError)
-		WriteJSON(w, http.StatusInternalServerError, nil, false, err.Error())
-		return
-	}
-	WriteJSON(w, http.StatusOK, data, true, nil)
+func (ps *PopulationService) GetPopulationByCountryCode(countryCode string) (interface{}, error) {
+	return ps.repo.GetPopulationByCountryData(countryCode)
 }
