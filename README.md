@@ -1,5 +1,7 @@
 ## Nation Pulse
 
+_This project is created for learning purposes, and lack many features which are usually seen in production grade system. This is my attempt to try and build a complete end to end system_
+
 A platform to explore and learn about several countries demographics and economy.
 The project technically demonstrates the use of Go programming language and various backend services which can run a simple backend system. My main objective for builing this project involves learning how a simple backend system works, what are the components that make up an end to end runing system. And to start thinking like a gopher!
 
