@@ -3,8 +3,6 @@ package kafkaSvc
 import (
 	"context"
 	"fmt"
-	"log"
-	"os"
 	"time"
 
 	"github.com/segmentio/kafka-go"
@@ -24,7 +22,7 @@ func NewProducer(cfg config.Config, ctx context.Context) *Producer {
 }
 
 func (p *Producer) NewWriter(topic string, writerStr string) *kafka.Writer {
-	writeLog := log.New(os.Stdout, writerStr+": ", 0)
+	// writeLog := log.New(os.Stdout, writerStr+": ", 0)
 	return kafka.NewWriter(kafka.WriterConfig{
 		Brokers:      p.cfg.KafkaBrokers,
 		Topic:        topic,
@@ -34,7 +32,7 @@ func (p *Producer) NewWriter(topic string, writerStr string) *kafka.Writer {
 		WriteTimeout: 30 * time.Second,
 		ReadTimeout:  30 * time.Second,
 		Balancer:     &kafka.LeastBytes{},
-		Logger:       writeLog,
+		// Logger:       writeLog,
 	})
 }
 

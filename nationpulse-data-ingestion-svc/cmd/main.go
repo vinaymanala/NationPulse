@@ -2,12 +2,12 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"net"
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	_ "net/http/pprof"
 
@@ -17,12 +17,15 @@ import (
 	"github.com/vinaymanala/nationpulse-data-ingestion-svc/internal/store"
 	. "github.com/vinaymanala/nationpulse-data-ingestion-svc/internal/types"
 	"github.com/vinaymanala/nationpulse-data-ingestion-svc/pb"
+	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/health"
+	"google.golang.org/grpc/health/grpc_health_v1"
 )
 
 func main() {
-	fmt.Println("Running go..")
-
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
 	// Load environment variables from .env for local development
 	if err := godotenv.Load(); err != nil {
 		log.Println("No .env file found or failed to load; relying on environment variables")
@@ -46,29 +49,57 @@ func main() {
 	// dataIngestionSvc.Serve()
 	// os.Exit(1)
 
-	// setup a grpc tcp listener no port 50051
-	lis, err := net.Listen("tcp", ":50051")
-	if err != nil {
-		log.Fatalf("Failed to listen: %v", err)
-	}
-	grpcServer := grpc.NewServer()
-	pb.RegisterDataIngestionServer(grpcServer, dataIngestionSvc)
+	//create the errgroup context
+	g, ctx := errgroup.WithContext(ctx)
 
-	// Run server in a goroutine to allow graceful shutdown
-	go func() {
-		log.Printf("Listening to %v", lis.Addr())
-		if err := grpcServer.Serve(lis); err != nil {
-			log.Fatalf("Failed to serve grpc: %v", err)
+	//grpc server setup
+	grpcSrv := grpc.NewServer()
+	// protobuf : Data ingestion svc
+	pb.RegisterDataIngestionServer(grpcSrv, dataIngestionSvc)
+
+	healthSrv := health.NewServer()
+	grpc_health_v1.RegisterHealthServer(grpcSrv, healthSrv)
+
+	// start grpc server
+	g.Go(func() error {
+		lis, err := net.Listen("tcp", ":50051")
+		if err != nil {
+			return err
 		}
-	}()
+		log.Printf("gRPC health server listening at %v\n", lis.Addr())
 
-	// Wait for interrupt signal for graceful shutdown
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-	<-sigChan
+		// goroutine to stop the gRPC server when the context is cancelled
+		go func() {
+			<-ctx.Done()
+			grpcSrv.GracefulStop()
+		}()
+		return grpcSrv.Serve(lis)
+	})
 
-	log.Println("Shutting down gRPC server...")
-	grpcServer.GracefulStop()
-	lis.Close()
-	log.Println("Server stopped")
+	// Dependency Checker (Postgres)
+	g.Go(func() error {
+		ticker := time.NewTicker(10 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return nil
+			case <-ticker.C:
+				status := grpc_health_v1.HealthCheckResponse_SERVING
+
+				//check redis & postgres
+				if err := pg.Client.Ping(ctx); err != nil {
+					log.Printf("DB down: %v\n", err)
+					status = grpc_health_v1.HealthCheckResponse_NOT_SERVING
+				}
+
+				healthSrv.SetServingStatus("", status)
+			}
+		}
+	})
+
+	if err := g.Wait(); err != nil {
+		log.Printf("System exiting with error: %v\n", err)
+	}
+
 }

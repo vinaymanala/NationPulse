@@ -3,25 +3,32 @@ package main
 import (
 	"context"
 	"log"
+	"net"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"github.com/joho/godotenv"
 	"github.com/vinaymanala/nationpulse-reporting-svc/internal/config"
 	"github.com/vinaymanala/nationpulse-reporting-svc/internal/service"
 	"github.com/vinaymanala/nationpulse-reporting-svc/internal/store"
 	. "github.com/vinaymanala/nationpulse-reporting-svc/internal/types"
+	"golang.org/x/sync/errgroup"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/health"
+	"google.golang.org/grpc/health/grpc_health_v1"
 )
 
 func main() {
-
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
 	// Load environment variables from .env for local development
 	if err := godotenv.Load(); err != nil {
 		log.Println("No .env file found or failed to load; relying on environment variables")
 	}
 
 	cfg := config.Load()
-
-	// r := gin.Default()
-	ctx := context.Background()
 
 	rds := store.NewRedis(cfg)
 	db := store.NewPgClient(ctx, cfg)
@@ -35,36 +42,59 @@ func main() {
 	exportService := service.NewExportService(configs)
 	exportService.Serve()
 
-	// r.POST("/produce", func(c *gin.Context) {
-	// 	type Req struct {
-	// 		Message string `json:"message"`
-	// 	}
-	// 	var body Req
-	// 	if err := c.BindJSON(&body); err != nil {
-	// 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-	// 		return
-	// 	}
+	//create the errgroup context
+	g, ctx := errgroup.WithContext(ctx)
 
-	// 	writer := internal.NewKafkaWriter()
-	// 	err := writer.WriteMessages(context.Background(),
-	// 		kafka.Message{
-	// 			Key:   []byte(time.Now().Format(time.RFC3339)),
-	// 			Value: []byte(body.Message),
-	// 		},
-	// 	)
-	// 	internal.CloseWriter(writer)
+	//grpc server setup
+	grpcSrv := grpc.NewServer()
+	healthSrv := health.NewServer()
+	grpc_health_v1.RegisterHealthServer(grpcSrv, healthSrv)
 
-	// 	if err != nil {
-	// 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to produce"})
-	// 		return
-	// 	}
-	// 	c.JSON(http.StatusOK, gin.H{"status": "sent"})
-	// })
+	// start grpc server
+	g.Go(func() error {
+		lis, err := net.Listen("tcp", ":50051")
+		if err != nil {
+			return err
+		}
+		log.Printf("gRPC health server listening at %v\n", lis.Addr())
 
-	// go startConsumer("group1") // start consumer in background
+		// goroutine to stop the gRPC server when the context is cancelled
+		go func() {
+			<-ctx.Done()
+			grpcSrv.GracefulStop()
+		}()
+		return grpcSrv.Serve(lis)
+	})
 
-	// log.Println("Starting gin at :8080")
-	// if err := r.Run(":8080"); err != nil {
-	// 	panic("Error occured while running the server:" + err.Error())
-	// }
+	// Dependency Checker (Postgres)
+	g.Go(func() error {
+		ticker := time.NewTicker(10 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return nil
+			case <-ticker.C:
+				status := grpc_health_v1.HealthCheckResponse_SERVING
+
+				//check redis & postgres
+				//check redis & postgres
+				if err := db.Client.Ping(ctx); err != nil {
+					log.Printf("DB down: %v\n", err)
+					status = grpc_health_v1.HealthCheckResponse_NOT_SERVING
+				}
+				if err := rds.Client.Ping(ctx).Err(); err != nil {
+					log.Printf("Redis down: %v\n", err)
+					status = grpc_health_v1.HealthCheckResponse_NOT_SERVING
+				}
+
+				healthSrv.SetServingStatus("", status)
+			}
+		}
+	})
+
+	if err := g.Wait(); err != nil {
+		log.Printf("System exiting with error: %v\n", err)
+	}
+
 }

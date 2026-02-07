@@ -2,8 +2,8 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -18,6 +18,10 @@ import (
 	"github.com/nationpulse-bff/internal/utils"
 	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/zap"
+	"golang.org/x/sync/errgroup"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/health"
+	"google.golang.org/grpc/health/grpc_health_v1"
 )
 
 //func run(ctx context.Context) {
@@ -25,7 +29,9 @@ import (
 //}
 
 func main() {
-	ctx := context.Background()
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
 	// Load environment variables from .env for local development
 	if err := godotenv.Load(); err != nil {
 		log.Println("No .env file found or failed to load; relying on environment variables")
@@ -80,25 +86,77 @@ func main() {
 	defer rds.Client.Close()
 	defer db.Client.Close()
 
+	//create the errgroup context
+	g, ctx := errgroup.WithContext(ctx)
+
+	//grpc server setup
+	grpcSrv := grpc.NewServer()
+	healthSrv := health.NewServer()
+	grpc_health_v1.RegisterHealthServer(grpcSrv, healthSrv)
+
+	// start grpc server
+	g.Go(func() error {
+		lis, err := net.Listen("tcp", ":50051")
+		if err != nil {
+			return err
+		}
+		log.Printf("gRPC health server listening at %v\n", lis.Addr())
+
+		// goroutine to stop the gRPC server when the context is cancelled
+		go func() {
+			<-ctx.Done()
+			grpcSrv.GracefulStop()
+		}()
+		return grpcSrv.Serve(lis)
+	})
 	// Creates a HTTP server
 	srv := internals.NewServer(configs)
-	httpServer := &http.Server{
-		Addr:    ":8081",
-		Handler: srv,
-	}
-	fmt.Printf("Starting up..")
-	go func() {
-		log.Printf("listening to %s\n", httpServer.Addr)
+	httpServer := &http.Server{Addr: ":8081", Handler: srv}
+	g.Go(func() error {
+		log.Printf("HTTP listening on %s\n", httpServer.Addr)
+
+		// goroutine to shutdown the HTTP server when context is cancelled
+		go func() {
+			<-ctx.Done()
+			shutDownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			httpServer.Shutdown(shutDownCtx)
+		}()
+
 		if err := httpServer.ListenAndServe(); err != http.ErrServerClosed {
-			fmt.Printf("error listening and serving: %s\n", err)
-			os.Exit(1)
+			return err
 		}
-	}()
+		return nil
+	})
 
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-	<-sigChan
+	// Dependency Checker (Redis/Postgres)
+	g.Go(func() error {
+		ticker := time.NewTicker(10 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return nil
+			case <-ticker.C:
+				status := grpc_health_v1.HealthCheckResponse_SERVING
 
-	log.Println("Shutting down...")
-	httpServer.Shutdown(ctx)
+				//check redis & postgres
+				if err := db.Client.Ping(ctx); err != nil {
+					logger.Error("DB down", zap.Error(err))
+					status = grpc_health_v1.HealthCheckResponse_NOT_SERVING
+				}
+				if err := rds.Client.Ping(ctx).Err(); err != nil {
+					logger.Error("Redis down", zap.Error(err))
+					status = grpc_health_v1.HealthCheckResponse_NOT_SERVING
+				}
+
+				healthSrv.SetServingStatus("", status)
+			}
+		}
+	})
+
+	if err := g.Wait(); err != nil {
+		log.Printf("System exiting with error: %v\n", err)
+	}
+
 }
