@@ -14,6 +14,8 @@ setup: ## Full first-time setup: Cluster, Infra, and Deploy
 	@make deploy
 	@echo "🚀 Setup complete. Run 'make tunnel' to access the API."
 
+start: #(Optional) For running the full project using docker, NOTE:[need to make host changes as well]
+	docker compose up -d --build bff reporting ingestion cronjob postgres redis kafka-1 kafka-2 kafka-3 kafka-init
 up: # Start Infrastructyre (kafka, redis, postgres) 
 	docker compose up -d --build postgres redis kafka-1 kafka-2 kafka-3 kafka-init
 # 	docker compose logs -f 

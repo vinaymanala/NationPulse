@@ -10,7 +10,8 @@ This documentation provides you with all the details you need to know about this
 - [Overview](#overview)
   - [Features](#features)
   - [Components](#components)
-  - [Architecture at a Glance]()
+  - [Architecture at a Glance](#architecture-at-a-glance)
+  - [Kubernetes architecture](#kubernetes-architecture)
   - [High level Data flow]()
     - [BFF](#bff)
     - [Reporting service](#reporting-using-kafka)
@@ -46,8 +47,52 @@ This documentation provides you with all the details you need to know about this
 - [Reporting service](#reporting-using-kafka) - The Reporting service is used by the BFF layer for handling of reports requests for the users. It uses kafka as a mesage broker to send and receive message requests from and to the bff layer.
 - [Data ingestion service](#data-ingestion-using-grpc) - The Data Ingestion service is used to ingest new feed data periodically from OECD source. The service uses ETL(Extract, Transform and Load) simplified version written in Go to ingest feeds and uploads to the Postgres database.
 - [Cron job scheduler service](#cron-job-scheduler) - The Cron Job Scheduler service is used as a trigger for data ingestion service to ingest new feed. It uses a simple cron job library written in Go.
+- _[NEW]_ [Kube Pulse](#kube-pulse) - The kube pulse is health check service using gRPC default healthcheck server properties and methods. The service checks all the project services and inside services there is a health check for postgres and redis.
 
 ## Architecture at a Glance
+
+### Kubernetes Architecture
+
+A simple kubernetes setup is done locally using kind which provides multi-node fast cluster setup. Using kubectl to manage kubernetes cluster. All the services are running inside pods. Each service has its own deploy.yaml file and the environments variables are added via a infra-config.yaml file. You can find these yaml files in the root folder under `k8s/`.
+
+```
+graph TD
+    subgraph "Local Machine (Windows/WSL2)"
+        Browser["Web Browser / Frontend (React.ts)"] -- "localhost:8080 (via Port-Forward)" --> BFF
+
+        subgraph "Kubernetes (kind cluster)"
+            BFF["BFF Service (Go)"]
+            ING["Ingestion Service (Go)"]
+            REP["Reporting Service (Go)"]
+            CRN["Cron Job Scheduler (Go)"]
+            KUB["Kube Pulse (Go)"]
+
+            BFF <-- "Internal K8s DNS" --> REP
+            CRN <-- "Internal K8s DNS" --> ING
+            KUB <-- "Internal gRPC Health Check" --> BFF
+            KUB <-- "Internal gRPC Health Check" --> ING
+            KUB <-- "Internal gRPC Health Check" --> REP
+            KUB <-- "Internal gRPC Health Check" --> CRN
+        end
+
+        subgraph "Docker Compose (Infra)"
+            KAFKA["Kafka Cluster (3 Brokers)"]
+            DB[(Postgres DB)]
+            REDIS[(Redis Cache)]
+        end
+
+        %% Networking Bridges
+        BFF <-- "host.docker.internal:19092" --> KAFKA
+        BFF <-- "host.docker.internal:5432" --> DB
+        BFF <-- "host.docker.internal:6379" --> REDIS
+        REP <-- "host.docker.internal:6379" --> REDIS
+        REP <-- "host.docker.internal:19093" --> KAFKA
+        REP <-- "host.docker.internal:5432" --> DB
+        ING <-- "host.docker.internal:5432" --> DB
+    end
+```
+
+### High level Flow
 
 A simple high level architecture of how the project backend flows:
 
@@ -259,10 +304,20 @@ sequenceDiagram
 
   The library uses mutex internally to lock the process and making sure only one processis active and running. I haven't gone through the library code and read the main functions from the library required to implement in my project.
 
-  #### Core responsiblities
+  #### Core responsibilities
   - Cron job scheduling
   - gRPC service to service communication
   - Locking mechanism
+
+### Kube Pulse
+
+- Why kube pulse ?
+
+  Any project needs to know whetther their backend services are healthy and running. This project implements a simple health check using gRPC health check provider.
+  Every service health check is run inside a goroutine to concurrently check all the services are healthy. The logs are structured which shows the service name and status. There is a health check inside services which are using postgres and redis to check if they are connected. For error checks for each dependency errgroup library is very helpful to check and propagate any first failed dependency error / non-nil error, eventually shutting down the service.
+
+  ### Core responsibilities
+  - Health check
 
 ## Service-to-Service Communication
 
@@ -380,15 +435,38 @@ As Rob Pike said -
 
 ## Local Development
 
-To run the project locally, make sure you have Docker installed and running. You would also need make command to run the setup and few other things.
+To run the project locally, make sure you have Docker installed, `kind` and `kubectl` for running kubernetes cluster . You would also need make command to run the setup and few other things.
 
 At the project root folder, run this command in your terminal:
 
+First time running the project:
+
 ```
-make start
+make setup
 ```
 
-This command will start bff, reporting, ingestion, cronjob, kafka, postgres, redis and prometheus instances.
+If you did some changes in Go code(optional):
+
+```
+make build
+make load
+make restart
+```
+
+Start running the project:
+
+```
+make up
+make tunnel
+```
+
+`make up`command will start kafka, postgres, redis and prometheus instances.
+
+To stop the setup completely
+
+```
+make clean
+```
 
 You need to add the backup.sql file into your postgres database instance.
 
@@ -397,7 +475,14 @@ That's it! You have now backend up and running. If still there are issues. Just 
 if you want to stop all the instances running, run this command in your terminal:
 
 ```
-make stop
+make down
+```
+
+To run the full project using docker. You need to change the host mappings to localhost from docker host.
+After changes are done correctly, run this command:
+
+```
+make start
 ```
 
 ##### To run the project frontend , you can follow the instructions from [here](https://github.com/vinaymanala/NationPulse-Frontend)
@@ -407,6 +492,21 @@ make stop
 Below is the project structure. It is not the best way to create such structure, I have tried to create a microservice but a feature based project structure. You can follow other repository with provides you with boilerplate go code with microservices architecture.
 
 ```
+├── k8s/
+│   ├── infra-config.yaml
+│   ├── kubepulse-deploy.yaml
+│   ├── nationpulse-bff-deploy.yaml
+│   ├── nationpulse-cronjob-deploy.yaml
+│   ├── nationpulse-ingestion-deploy.yaml
+│   └── nationpulse-reporting-deploy.yaml
+├── kubepulse/
+│   ├── cmd/
+│   │   └── main.go
+│   ├── internal/
+│   │   └── checkhealth.go
+│   ├── Dockerfile
+│   ├── go.mod
+│   └── go.sum
 ├── nationpulse-bff/
 │   ├── cmd/
 │   │   └── main.go
@@ -550,6 +650,7 @@ Below is the project structure. It is not the best way to create such structure,
 ├── PASTEBIN.md
 ├── prometheus.yml
 └── README.md
+
 ```
 
 You can generate your own tree like structure [here](https://githubtree.mgks.dev/)
@@ -557,10 +658,8 @@ You can generate your own tree like structure [here](https://githubtree.mgks.dev
 ## Roadmap / Future Improvements
 
 - Add circuit breakers and retries
-- Kubernetes CronJobs for ingestion triggers
+- Kubernetes complete architecture
 - Distributed tracing with OpenTelemetry
 - End to end microservice architecture
 - Health checks and metrics aggregator with Prometheus and Grafana
 - More OECD and other data sources insights
-
-####
