@@ -1,0 +1,42 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cronjob-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cronjob
+  template:
+    metadata:
+      labels:
+        app: cronjob
+    spec:
+      containers:
+        - name: cronjob
+          image: nationpulse-cronjob:latest
+          imagePullPolicy: Never # Critical for local Kind clusters
+          envFrom:
+            - configMapRef:
+                name: nationpulse-infra-config
+          ports:
+            - containerPort: 8081 # HTTP API
+            - containerPort: 50051 # gRPC Health
+          livenessProbe:
+            grpc:
+              port: 50051
+            initialDelaySeconds: 10
+            periodSeconds: 15
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cronjob-service # This name becomes the DNS address for Kube-Pulse
+spec:
+  selector:
+    app: cronjob
+  ports:
+    - name: http
+      port: 8081
+    - name: grpc-health
+      port: 50051

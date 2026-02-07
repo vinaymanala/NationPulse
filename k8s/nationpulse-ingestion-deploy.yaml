@@ -1,0 +1,42 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ingestion-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ingestion
+  template:
+    metadata:
+      labels:
+        app: ingestion
+    spec:
+      containers:
+        - name: ingestion
+          image: nationpulse-ingestion:latest
+          imagePullPolicy: Never # Critical for local Kind clusters
+          envFrom:
+            - configMapRef:
+                name: nationpulse-infra-config
+          ports:
+            - containerPort: 8081 # HTTP API
+            - containerPort: 50051 # gRPC Health
+          livenessProbe:
+            grpc:
+              port: 50053
+            initialDelaySeconds: 10
+            periodSeconds: 15
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ingestion-service # This name becomes the DNS address for Kube-Pulse
+spec:
+  selector:
+    app: ingestion
+  ports:
+    - name: http
+      port: 8081
+    - name: grpc-health
+      port: 50051

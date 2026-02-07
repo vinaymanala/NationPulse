@@ -1,0 +1,42 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bff-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: bff
+  template:
+    metadata:
+      labels:
+        app: bff
+    spec:
+      containers:
+        - name: bff
+          image: nationpulse-bff:latest
+          imagePullPolicy: Never # Critical for local Kind clusters
+          envFrom:
+            - configMapRef:
+                name: nationpulse-infra-config
+          ports:
+            - containerPort: 8081 # HTTP API
+            - containerPort: 50051 # gRPC Health
+          livenessProbe:
+            grpc:
+              port: 50051
+            initialDelaySeconds: 10
+            periodSeconds: 15
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: bff-service # This name becomes the DNS address for Kube-Pulse
+spec:
+  selector:
+    app: bff
+  ports:
+    - name: http
+      port: 8081
+    - name: grpc-health
+      port: 50051

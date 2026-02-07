@@ -32,6 +32,19 @@ services:
     restart: unless-stopped
     networks:
       - nationPulse-network
+  kubepulse:
+    build:
+      context: ./kubepulse/
+    container_name: kubepulse-svc
+    expose:
+      - 8081
+    depends_on:
+      - bff
+      - reporting
+      - ingestion
+      - cronjob
+    networks:
+      - nationPulse-network
   bff:
     build:
       context: ./nationpulse-bff/
@@ -40,6 +53,7 @@ services:
       - 8081
     ports:
       - "8081:8081"
+      - "50051:50051"
     environment:
       - PORT=8081
       - PG_DB_ADDR=postgres-db:5432
@@ -75,6 +89,10 @@ services:
     build:
       context: ./nationpulse-reporting-svc/
     container_name: nationpulse-reporting-svc
+    expose:
+      - 50051
+    ports:
+      - "50052:50051"
     environment:
       - PG_DB_ADDR=postgres-db:5432
       - REDIS_ADDR=redis-cache:6379
@@ -94,6 +112,8 @@ services:
     build:
       context: ./nationpulse-data-ingestion-svc/
     container_name: nationpulse-data-ingestion-svc
+    ports:
+      - "50053:50051"
     environment:
       - KAFKA_BROKERS=kafka-1:9092,kafka-2:9094,kafka-3:9095
       - REDIS_ADDR=redis-cache:6379
@@ -112,8 +132,6 @@ services:
       - GROWTH_POPULATION_INDICATOR=OECD.ECO.MAD,DSD_EO@DF_EO,/.POP+UNR+POP1574+ERS1574+ET_ANNPCT.A
     # env_file:
     #   - .env
-    expose:
-      - 50051
     depends_on:
       - postgres
       - redis
@@ -130,6 +148,8 @@ services:
     #   - .env
     expose:
       - 50051
+    ports:
+      - "50054:50051"
     networks:
       - nationPulse-network
   
@@ -153,13 +173,16 @@ services:
     container_name: kafka-1
     ports:
       - "9092:9092"
+      - "19092:19092"
     environment:
       KAFKA_NODE_ID: 1
       KAFKA_PROCESS_ROLES: broker,controller
-      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka-1:9092
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093,EXTERNAL://0.0.0.0:19092
+      # KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka-1:9092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka-1:9092,EXTERNAL://host.docker.internal:19092
       KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT
+      # KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
       KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka-1:9093,2@kafka-2:9093,3@kafka-3:9093
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 3
@@ -178,13 +201,15 @@ services:
     container_name: kafka-2
     ports:
       - "9094:9094"
+      - "19093:19093"
     environment:
       KAFKA_NODE_ID: 2
       KAFKA_PROCESS_ROLES: broker,controller
-      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9094,CONTROLLER://0.0.0.0:9093
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka-2:9094
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9094,CONTROLLER://0.0.0.0:9093,EXTERNAL://0.0.0.0:19093
+      # KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka-2:9094
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka-2:9094,EXTERNAL://host.docker.internal:19093
       KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT
       KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka-1:9093,2@kafka-2:9093,3@kafka-3:9093
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 3
@@ -203,13 +228,15 @@ services:
     container_name: kafka-3
     ports:
       - "9095:9095"
+      - "19094:19094"
     environment:
       KAFKA_NODE_ID: 3
       KAFKA_PROCESS_ROLES: broker,controller
-      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9095,CONTROLLER://0.0.0.0:9093
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka-3:9095
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9095,CONTROLLER://0.0.0.0:9093,EXTERNAL://0.0.0.0:19094
+      # KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka-3:9095
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka-3:9095,EXTERNAL://host.docker.internal:19094
       KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT
       KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka-1:9093,2@kafka-2:9093,3@kafka-3:9093
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 3
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 3

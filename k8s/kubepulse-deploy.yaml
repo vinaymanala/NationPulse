@@ -1,0 +1,49 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kubepulse-service
+  labels:
+    app: kubepulse
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kubepulse
+  template:
+    metadata:
+      labels:
+        app: kubepulse
+    spec:
+      containers:
+        - name: collector
+          image: nationpulse-kubepulse:latest
+          imagePullPolicy: Never # Required for Kind to use local images
+          env:
+            # Tell the Go code where to find the other services
+            - name: BFF_ADDR
+              value: "bff-service:50051"
+            - name: REPORTING_ADDR
+              value: "reporting-service:50051"
+            - name: INGESTION_ADDR
+              value: "ingestion-service:50051"
+            - name: CRONJOB_ADDR
+              value: "cronjob-service:50051"
+          # Since this is a simple collector, we use a basic liveness probe
+          livenessProbe:
+            exec:
+              command: ["/bin/sh", "-c", "ps aux | grep collector"]
+            initialDelaySeconds: 5
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kubepulse-service
+spec:
+  selector:
+    app: kubepulse
+  ports:
+    - name: http
+      protocol: TCP
+      port: 80 # If you ever add a dashboard UI
+      targetPort: 80

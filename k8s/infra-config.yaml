@@ -1,0 +1,31 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nationpulse-infra-config
+data:
+  # Shared Infrastructure Addresses
+  KAFKA_BROKERS: "host.docker.internal:19092,host.docker.internal:19093,host.docker.internal:19094"
+  REDIS_ADDR: "host.docker.internal:6379"
+  PG_DB_ADDR: "host.docker.internal:5432"
+  PG_DB_HOST: "host.docker.internal"
+  DB_PORT: "5432"
+  PG_DB_NAME: "nationPulseDB"
+  PG_DB_USER: "postgres"
+  PG_DB_PASSWORD: "postgres"
+  ACCESS_SECRET: "epAWkXwJr03d6MN9pXUAxGj+dB6U+8HcYxwTGxVU1gg="
+  REFRESH_SECRET: 'YN5Vgber0y5IX5CUq\ZlIQC8avwpsX67+Q\8OcvJ23c='
+  KAFKA_WRITER_TOPIC: "message-log"
+  KAFKA_READER_TOPIC: "message-send"
+  BASE_URL: "https://sdmx.oecd.org/public/rest/data"
+  DELAY_BETWEEN_REQUESTS: "1"
+  POPULATION_INDICATOR: "OECD.ELS.SAE,DSD_POPULATION@DF_POP_HIST,/.POP.PS._T.."
+  ECONOMY_GDP_INDICATOR: "OECD.SDD.NAD,DSD_NAMAIN1@DF_QNA_EXPENDITURE_CAPITA,/Q............"
+  ECONOMY_GOV_INDICATOR: "OECD.GOV.GIP,DSD_GOV@DF_GOV_PF_YU,/A...PT_B1GQ..."
+  HEALTH_INDICATOR: "OECD.ELS.HD,DSD_HEALTH_STAT@DF_HEALTH_STATUS,/.A.IRTA+CSEM+LFEXP.........."
+  GROWTH_GDP_INDICATOR: "OECD.ECO.MAD,DSD_EO@DF_EO,/.MGSV_ANNPCT+XGSV_ANNPCT+TDDV_ANNPCT+PCORE_YTYPCT+GDPV_ANNPCT.A"
+  GROWTH_POPULATION_INDICATOR: "OECD.ECO.MAD,DSD_EO@DF_EO,/.POP+UNR+POP1574+ERS1574+ET_ANNPCT.A"
+  GRPC_SERVER_ADDR: "ingestion-service:50051"
+  CRON_SCHEDULE: "@every 360h"
+  # Common App Settings
+  LOG_LEVEL: "info"
+  ENVIRONMENT: "development"
