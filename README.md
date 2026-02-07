@@ -659,6 +659,7 @@ You can generate your own tree like structure [here](https://githubtree.mgks.dev
 
 ## Roadmap / Future Improvements
 
+- Add AI orchestration for dashboard and chart data insights
 - Add circuit breakers and retries
 - Kubernetes complete architecture
 - Distributed tracing with OpenTelemetry
