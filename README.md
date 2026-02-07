@@ -55,7 +55,7 @@ This documentation provides you with all the details you need to know about this
 
 A simple kubernetes setup is done locally using kind which provides multi-node fast cluster setup. Using kubectl to manage kubernetes cluster. All the services are running inside pods. Each service has its own deploy.yaml file and the environments variables are added via a infra-config.yaml file. You can find these yaml files in the root folder under `k8s/`.
 
-```
+```mermaid
 graph TD
     subgraph "Local Machine (Windows/WSL2)"
         Browser["Web Browser / Frontend (React.ts)"] -- "localhost:8080 (via Port-Forward)" --> BFF
