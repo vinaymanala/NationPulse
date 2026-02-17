@@ -41,11 +41,13 @@ This documentation provides you with all the details you need to know about this
 
 #### As the project is still in development state, new features and components will be added in the future. You can find the roadmap [here](#roadmap--future-improvements)
 
+#### To view the project frontend images. You can find it [here](https://github.com/vinaymanala/NationPulse-Frontend?tab=readme-ov-file#images)
+
 ### Components
 
 #### The project consists of mulitple components.
 
-- [BFF](#bff) - The BFF(Backend-for-Frotend) layer is created to aggregate and manage data access for the frontend. It abstracts multiple backend services (Reporting, Data Ingestion, Cron job scheduler, etc.) and provides a single point of call from the frontend.
+- [BFF](#bff) - The BFF(Backend-for-Frotend) layer is created to aggregate and manage data access for the frontend. It abstracts multiple backend ervices (Reporting, Data Ingestion, Cron job scheduler, etc.) and provides a single point of call from the frontend.
 - [Reporting service](#reporting-using-kafka) - The Reporting service is used by the BFF layer for handling of reports requests for the users. It uses kafka as a mesage broker to send and receive message requests from and to the bff layer.
 - [Data ingestion service](#data-ingestion-using-grpc) - The Data Ingestion service is used to ingest new feed data periodically from OECD source. The service uses ETL(Extract, Transform and Load) simplified version written in Go to ingest feeds and uploads to the Postgres database.
 - [Cron job scheduler service](#cron-job-scheduler) - The Cron Job Scheduler service is used as a trigger for data ingestion service to ingest new feed. It uses a simple cron job library written in Go.

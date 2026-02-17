@@ -3,9 +3,11 @@
 CLUSTER_NAME=nationpulse-cluster
 K8S_DIR=./k8s
 SERVICES=nationpulse-bff nationpulse-ingestion nationpulse-reporting nationpulse-cronjob
+
 run: start
 	
-.PHONY setup up down build load deploy restart logs clean
+.PHONY: setup up down build load deploy restart logs clean start
+
 setup: ## Full first-time setup: Cluster, Infra, and Deploy
 	@make up
 	kind create cluster --name $(CLUSTER_NAME)
@@ -14,13 +16,13 @@ setup: ## Full first-time setup: Cluster, Infra, and Deploy
 	@make deploy
 	@echo "🚀 Setup complete. Run 'make tunnel' to access the API."
 
-start: #(Optional) For running the full project using docker, NOTE:[need to make host changes as well]
+start: ## (Optional) For running the full project using docker, NOTE:[need to make host changes as well]
 	docker compose up -d --build bff reporting ingestion cronjob postgres redis kafka-1 kafka-2 kafka-3 kafka-init
-up: # Start Infrastructyre (kafka, redis, postgres) 
-	docker compose up -d --build postgres redis kafka-1 kafka-2 kafka-3 kafka-init
-# 	docker compose logs -f 
 
-down: # Stop Infrastructure
+up: ## Start Infrastructure (kafka, redis, postgres) 
+	docker compose up -d --build postgres redis kafka-1 kafka-2 kafka-3 kafka-init
+
+down: ## Stop Infrastructure
 	docker compose down
 
 build: ## Build all Go service images
