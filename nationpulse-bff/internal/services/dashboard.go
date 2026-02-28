@@ -13,10 +13,9 @@ type DashboardService struct {
 	repo    *repos.DashboardRepo
 }
 
-func NewDashboardService(configs *Configs, repo *repos.DashboardRepo) *DashboardService {
+func NewDashboardService(repo *repos.DashboardRepo) *DashboardService {
 	return &DashboardService{
-		Configs: configs,
-		repo:    repo,
+		repo: repo,
 	}
 }
 

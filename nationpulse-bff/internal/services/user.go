@@ -49,19 +49,15 @@ func (us *UserService) HandleLogin(w http.ResponseWriter, r *http.Request) {
 		WriteJSON(w, http.StatusUnauthorized, nil, false, err.Error())
 		return
 	}
-	//if in.Name != demoUser.Name || in.Password != demoUser.Password {
-	//	http.Error(w, "Unauthorized", http.StatusUnauthorized)
-	//	return
-	//}
-	fmt.Println("USER FROM DB", user)
 
+	// fmt.Println("USER FROM DB", user)
 	tokens, err := auth.IssueTokens(user.ID, us.Configs)
 	if err != nil {
 		http.Error(w, "Failed to issue tokens", http.StatusInternalServerError)
 		WriteJSON(w, http.StatusInternalServerError, nil, false, err.Error())
 		return
 	}
-	fmt.Println("TOKENS", tokens)
+	// fmt.Println("TOKENS", tokens)
 	if err := auth.Persist(r.Context(), rds, tokens); err != nil {
 		http.Error(w, "Failed to persist tokens", http.StatusInternalServerError)
 		WriteJSON(w, http.StatusInternalServerError, nil, false, err.Error())
@@ -130,6 +126,7 @@ func (us *UserService) HandleRefreshToken(w http.ResponseWriter, r *http.Request
 		WriteJSON(w, http.StatusUnauthorized, nil, false, err.Error())
 		return
 	}
+	// deletes existing refresh token
 	ctx := context.Background()
 	if _, err := rds.GetUserByJTI(ctx, "refresh:"+claims.ID); err != nil {
 		log.Println(http.StatusUnauthorized, errors.New("refresh revoked"))
@@ -138,6 +135,7 @@ func (us *UserService) HandleRefreshToken(w http.ResponseWriter, r *http.Request
 	}
 	_ = rds.DelJTI(ctx, "refresh:"+claims.ID)
 
+	// creates new tokens
 	toks, err := auth.IssueTokens(claims.Subject, us.Configs)
 	if err != nil {
 		log.Println(http.StatusInternalServerError, errors.New("could not issue new tokens"))
@@ -149,6 +147,7 @@ func (us *UserService) HandleRefreshToken(w http.ResponseWriter, r *http.Request
 		WriteJSON(w, http.StatusUnauthorized, nil, false, err.Error())
 		return
 	}
+	// stores new tokens in cache
 	auth.SetAuthCookies(w, toks)
 	WriteJSON(w, http.StatusCreated, resp, true, nil)
 }

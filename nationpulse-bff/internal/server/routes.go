@@ -31,7 +31,7 @@ func addRoutes(configs *utils.Configs, muxes *ServerMux) {
 	adminService := services.NewAdminService(configs, repos.NewAdminRepo(configs))
 	userService := services.NewUserService(configs, repos.NewUserRepo(configs))
 	utilsService := services.NewUtilsService(configs, repos.NewUtilsRepo(configs))
-	dashboardService := services.NewDashboardService(configs, repos.NewDashboardRepo(configs))
+	dashboardService := services.NewDashboardService(repos.NewDashboardRepo(configs))
 	populationService := services.NewPopulationService(configs, repos.NewPopulationRepo(configs))
 	healthService := services.NewHealthService(configs, repos.NewHealthRepo(configs))
 	economyService := services.NewEconomyService(configs, repos.NewEconomyRepo(configs))

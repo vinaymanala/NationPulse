@@ -25,6 +25,9 @@ type Tokens struct {
 	Audience string
 }
 
+/*
+Creates new JWT tokens (access token and refresh token)
+*/
 func IssueTokens(userID string, configs *utils.Configs) (*Tokens, error) {
 	now := time.Now().UTC()
 	t := &Tokens{
@@ -68,6 +71,9 @@ func IssueTokens(userID string, configs *utils.Configs) (*Tokens, error) {
 	return t, nil
 }
 
+/*
+Stores the tokens in cache
+*/
 func Persist(ctx context.Context, r *store.Redis, t *Tokens) error {
 	if err := r.SetJTI(ctx, "access:"+t.JTIAcc, t.UserID, t.ExpAcc); err != nil {
 		return err
@@ -79,6 +85,9 @@ func Persist(ctx context.Context, r *store.Redis, t *Tokens) error {
 	return nil
 }
 
+/*
+Set http auth cookies for access and refresh token
+*/
 func SetAuthCookies(w http.ResponseWriter, t *Tokens) {
 	fmt.Println("Cookie setting up")
 	access_cookie := &http.Cookie{
@@ -104,6 +113,9 @@ func SetAuthCookies(w http.ResponseWriter, t *Tokens) {
 	fmt.Println("Cookie Set!")
 }
 
+/*
+Clears the http auth cookies
+*/
 func ClearAuthCookies(w http.ResponseWriter) {
 	access_cookie := &http.Cookie{
 		Name:     "access_token",
@@ -130,6 +142,9 @@ func ClearAuthCookies(w http.ResponseWriter) {
 	fmt.Println("Cookie cleared...", access_cookie, refresh_cookie)
 }
 
+/*
+Checks for valid JWT token
+*/
 func ParseAccess(tokenStr string, configs *utils.Configs) (*jwt.RegisteredClaims, error) {
 	secret := configs.Cfg.AccessSecret
 	// fmt.Println("SECRET RECOVERED", secret)
@@ -172,6 +187,9 @@ func parseWithSecret(tokenStr, secret string) (*jwt.RegisteredClaims, error) {
 	return claims, nil
 }
 
+/*
+Checks for cookie
+*/
 func MustCookie(r *http.Request, name string) (string, error) {
 	c, err := r.Cookie(name)
 	if err != nil || c.Value == "" {
